@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections.abc import Callable, Mapping
+import copyreg
 from dataclasses import dataclass, field, replace
 from functools import cached_property, reduce
 import operator
@@ -22,6 +23,23 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, Union, get_args, get_origin, get_type_hints
 
 from pydantic import create_model
+
+
+# `Blueprint` carries `mappingproxy` fields (e.g. `global_config_overrides`,
+# `remapping_map`) that are not picklable by default — `MappingProxyType` lives
+# at `builtins.mappingproxy` which isn't a real builtins attribute, so pickle
+# can't reference the constructor by name. Round-trip through a module-level
+# factory so blueprints can be pickled across processes (e.g. shipped to a
+# daemon over the Coordinator @rpc service).
+def _rebuild_mappingproxy(d: dict) -> MappingProxyType:  # type: ignore[type-arg]
+    return MappingProxyType(d)
+
+
+def _reduce_mappingproxy(m: MappingProxyType) -> tuple[Any, ...]:  # type: ignore[type-arg]
+    return (_rebuild_mappingproxy, (dict(m),))
+
+
+copyreg.pickle(MappingProxyType, _reduce_mappingproxy)  # type: ignore[arg-type]
 
 if TYPE_CHECKING:
     from dimos.protocol.service.system_configurator.base import SystemConfigurator

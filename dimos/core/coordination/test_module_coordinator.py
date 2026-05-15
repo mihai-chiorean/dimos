@@ -775,9 +775,18 @@ def test_restart_preserves_remapped_streams(dynamic_coordinator) -> None:
     assert source_after.color_image.transport.topic == target.remapped_data.transport.topic
 
 
-def test_start_rpyc_service(dynamic_coordinator) -> None:
-    port = dynamic_coordinator.start_rpyc_service()
-    assert port > 0
+def test_start_rpc_service_responds_to_ping(dynamic_coordinator) -> None:
+    from dimos.core.coordination.module_coordinator import COORDINATOR_RPC_NAME
+    from dimos.protocol.rpc.pubsubrpc import LCMRPC
+
+    dynamic_coordinator.start_rpc_service()
+    client = LCMRPC()
+    client.start()
+    try:
+        result, _unsub = client.call_sync(f"{COORDINATOR_RPC_NAME}/ping", ([], {}), rpc_timeout=2.0)
+        assert result == "pong"
+    finally:
+        client.stop()
 
 
 def test_list_module_names(dynamic_coordinator) -> None:
@@ -785,16 +794,3 @@ def test_list_module_names(dynamic_coordinator) -> None:
     dynamic_coordinator.load_module(ModuleA)
     dynamic_coordinator.load_module(ModuleC)
     assert set(dynamic_coordinator.list_module_names()) == {"ModuleA", "ModuleC"}
-
-
-def test_get_module_endpoint(dynamic_coordinator) -> None:
-    dynamic_coordinator.load_module(ModuleA)
-    host, port, module_id = dynamic_coordinator.get_module_endpoint("ModuleA")
-    assert host == "localhost"
-    assert port > 0
-    assert isinstance(module_id, int)
-
-
-def test_get_module_endpoint_unknown_raises(dynamic_coordinator) -> None:
-    with pytest.raises(KeyError):
-        dynamic_coordinator.get_module_endpoint("NoSuchModule")
